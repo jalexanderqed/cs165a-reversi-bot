@@ -1,0 +1,5 @@
+#!/bin/bash
+
+if javac Main.java; then
+    java Main $@
+fi
