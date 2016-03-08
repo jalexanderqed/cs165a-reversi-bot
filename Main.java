@@ -32,10 +32,12 @@ public class Main{
             System.out.println(board.getScore());
             System.out.print("\n\n");
 
+            /*
             try {
                 Thread.sleep(100);
             }
             catch (Exception e){}
+            */
         }
     }
 }
@@ -166,7 +168,7 @@ class Board{
     public String toString(){
         StringBuilder s = new StringBuilder(WIDTH * WIDTH);
         char blue[] = { 0x1b, '[', '4', '4', 'm', 0 };
-        char black[] = { 0x1b, '[', '4', '1', 'm', 0 };
+        char red[] = { 0x1b, '[', '4', '1', 'm', 0 };
         char white[] = { 0x1b, '[', '4', '7', 'm', 0 };
         char underline[] = {0x1b, '[', '4', 'm', 0};
         char noColor[] = { 0x1b, '[', '4', '9', 'm', 0};
@@ -187,13 +189,13 @@ class Board{
             for(int x = 0; x < WIDTH; x++){
                 switch(spaces[x][y]){
                     case EMPTY:
-                        s.append(blue);
+                        s.append(white);
                         break;
                     case DARK:
-                        s.append(black);
+                        s.append(red);
                         break;
                     case LIGHT:
-                        s.append(white);
+                        s.append(blue);
                         break;
                 }
                 s.append(' ');
