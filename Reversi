@@ -1,4 +1,4 @@
 #!/bin/bash
 if javac Main.java; then
-    java Main $@
+    time java Main $@
 fi
