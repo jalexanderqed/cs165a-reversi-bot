@@ -24,7 +24,8 @@ public class Main {
         System.out.println("You are playing as " + ((iPlay == Board.DARK) ? "LIGHT (BLUE)." : "DARK (RED)."));
 
         System.out.println(board);
-        System.out.println(board.getScore());
+        System.out.println("Move played: --");
+        System.out.println("Score: " + board.getScore());
         System.out.print("\n\n");
 
         byte currentColor = Board.DARK;
@@ -42,7 +43,7 @@ public class Main {
             board.moveOn(chosenMove, currentColor);
             System.out.println(board);
             System.out.println("Move played: " + chosenMove);
-            System.out.println(board.getScore());
+            System.out.println("Score: " + board.getScore());
             System.out.print("\n\n");
 
             currentColor ^= 3;
@@ -302,6 +303,6 @@ class Score {
     }
 
     public String toString() {
-        return "Dark: " + dark + "\tLight: " + light;
+        return "Light " + light + " - Dark " + dark;
     }
 }
