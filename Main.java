@@ -1,12 +1,43 @@
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Main {
-    private static Board board;
-    private static BufferedReader stdIn = new BufferedReader(new InputStreamReader(System.in));
+    private Board board;
+    private BufferedReader stdIn = new BufferedReader(new InputStreamReader(System.in));
+    public PlayTreeNode rootNode;
+    public byte myPlayerColor;
 
-    public static void main(String[] args) {
+    private ConcurrentLinkedQueue<PlayTreeNode> treeQueue = new ConcurrentLinkedQueue<PlayTreeNode>();
+
+    public synchronized PlayTreeNode getNodeToExpand(){
+        PlayTreeNode n = treeQueue.poll();
+        while(n == null || treeQueue.size() > 2e6){
+            try {
+                Thread.sleep(20);
+            }catch(Exception e){}
+            n = treeQueue.poll();
+        }
+
+        while(!n.isValidInTree){
+            n = treeQueue.poll();
+            while(n == null){
+                try {
+                    Thread.sleep(20);
+                }catch(Exception e){}
+                n = treeQueue.poll();
+            }
+        }
+        return n;
+    }
+
+    public synchronized void addNodeToExpand(PlayTreeNode n){
+        treeQueue.add(n);
+    }
+
+    public void play(String[] args) {
         byte iPlay = Board.LIGHT;
         int boardSize = 8;
 
@@ -18,17 +49,24 @@ public class Main {
             }
         }
 
+        myPlayerColor = iPlay;
+        byte currentColor = Board.DARK;
+
         board = new Board(boardSize);
+        rootNode = new PlayTreeNode(board, null, myPlayerColor == currentColor ? PlayTreeNode.MAX_NODE : PlayTreeNode.MIN_NODE, 0);
+        addNodeToExpand(rootNode);
+
+        TreeUpdater updater = new TreeUpdater(this, myPlayerColor);
+        updater.start();
 
         System.out.println("Red is dark, and blue is light. White is empty.");
-        System.out.println("You are playing as " + ((iPlay == Board.DARK) ? "LIGHT (BLUE)." : "DARK (RED)."));
+        System.out.println("You are playing as " + ((myPlayerColor == Board.DARK) ? "LIGHT (BLUE)." : "DARK (RED)."));
 
         System.out.println(board);
-        System.out.println("Move played: --");
+        System.out.println("Move Played: --");
         System.out.println("Score: " + board.getScore());
-        System.out.print("\n\n");
+        System.out.println("\n");
 
-        byte currentColor = Board.DARK;
         while (true) {
             if (!board.canMove(currentColor)) {
                 System.out.println((currentColor == Board.LIGHT ? "Light" : "Dark") + " cannot move, turn skipped.");
@@ -38,13 +76,13 @@ public class Main {
                     break;
                 }
             }
-            Position chosenMove = currentColor == iPlay ? getMove(currentColor) : getPlayerMove(currentColor);
+            Position chosenMove = currentColor == myPlayerColor ? chooseMove(currentColor) : getPlayerMove(currentColor);
 
-            board.moveOn(chosenMove, currentColor);
+            makeMove(chosenMove, currentColor);
             System.out.println(board);
-            System.out.println("Move played: " + chosenMove);
+            System.out.println("Move Played: " + chosenMove);
             System.out.println("Score: " + board.getScore());
-            System.out.print("\n\n");
+            System.out.println("\n");
 
             currentColor ^= 3;
         }
@@ -58,32 +96,70 @@ public class Main {
         } else {
             System.out.println("Draw.");
         }
+
+        updater.pleaseStop();
     }
 
-    private static Position getMove(byte currentColor) {
-        ArrayList<Position> moves = board.possibleMoves(currentColor);
-        Position chosenMove = moves.get((int) (moves.size() * Math.random()));
-        return chosenMove;
+    private Position chooseMove(byte currentColor) throws IllegalStateException {
+        if(rootNode == null || rootNode.children.size() == 0) {
+            throw new IllegalStateException("Asked to choose move with insufficient root node");
+            /*
+            ArrayList<Position> moves = board.possibleMoves(currentColor);
+            Position chosenMove = moves.get((int) (moves.size() * Math.random()));
+            return chosenMove;
+            */
+        }
+
+        String bestPos = null;
+        double bestWeight = 0;
+        for(String key : rootNode.children.keySet()){
+            if(bestPos == null || rootNode.children.get(key).weight > bestWeight){
+                bestWeight = rootNode.children.get(key).weight;
+                bestPos = key;
+            }
+        }
+        return new Position(bestPos);
     }
 
-    private static Position getPlayerMove(byte currentColor) {
-        int x = -1;
-        int y = -1;
+    private synchronized void makeMove(Position p, byte color){
+        PlayTreeNode nextNode = rootNode.children.get(p.toString());
+        for(String key : rootNode.children.keySet()){
+            if(!key.equals(p.toString())){
+                rootNode.children.get(key).invalidate();
+            }
+        }
+        board.moveOn(p, color);
+        if(nextNode == null){
+            nextNode = new PlayTreeNode(board, null, color == myPlayerColor ? PlayTreeNode.MIN_NODE : PlayTreeNode.MAX_NODE, 0);
+            addNodeToExpand(nextNode);
+        }
+        rootNode = nextNode;
+        if(!board.equals(rootNode.board)) throw new IllegalStateException("Root node's board not equal to main board.");
+        if(!rootNode.isValidInTree) throw new IllegalStateException("Root node is not valid in tree.");
+        System.out.println("Size of queue: " + treeQueue.size());
+    }
+
+    private Position getPlayerMove(byte currentColor) {
+        Position p = null;
         boolean valid = false;
         while (!valid) {
-            x = -1;
-            y = -1;
+            p = null;
             System.out.print("Your move: ");
+            System.out.flush();
             try {
                 String move = stdIn.readLine();
-                x = move.charAt(0) - 'a';
-                y = Integer.parseInt(move.substring(1)) - 1;
+                p = new Position(move);
             } catch (Exception e) {}
 
-            if(board.isValidMove(x, y, currentColor)) valid = true;
+            if(p != null && board.isValidMove(p, currentColor)) valid = true;
             else System.out.println("Sorry, that move is not valid.");
         }
-        return new Position(x, y);
+        return p;
+    }
+    
+    public static void main(String[] args){
+        Main m = new Main();
+        m.play(args);
     }
 }
 
@@ -183,6 +259,10 @@ class Board {
         return res;
     }
 
+    public boolean isValidMove(Position p, byte color){
+        return isValidMove(p.x, p.y, color);
+    }
+
     public boolean isValidMove(int x, int y, byte color) {
         if (x < 0 || y < 0 || x >= WIDTH || y >= WIDTH) return false;
 
@@ -220,6 +300,31 @@ class Board {
             }
         }
         return new Score(dark, light);
+    }
+
+    public boolean equals(Board b){
+        for (int x = 0; x < WIDTH; x++) {
+            for (int y = 0; y < WIDTH; y++) {
+                if(spaces[x][y] != b.spaces[x][y]) return false;
+            }
+        }
+        return true;
+    }
+
+    public double getValueFor(byte color){
+        Score s = getScore();
+        for(int x = 0; x < WIDTH; x += WIDTH - 1){
+            for(int y = 0; y < WIDTH; y += WIDTH - 1){
+                if(spaces[x][y] == LIGHT) s.light += 4;
+                else if(spaces[x][y] == DARK) s.dark += 4;
+            }
+        }
+
+        double scorePart = (color == DARK ? (double)s.dark / s.light : (double)s.light / s.dark);
+        int playerMoves = possibleMoves(color).size();
+        int otherPlayerMoves = possibleMoves((byte)(color ^ 3)).size();
+        double movesPart = (double)(playerMoves + 5) / (otherPlayerMoves + 5);
+        return scorePart * movesPart;
     }
 
     public String toString() {
@@ -269,6 +374,83 @@ class Board {
     }
 }
 
+class PlayTreeNode{
+    public static final byte MIN_NODE = 4;
+    public static final byte MAX_NODE = 8;
+
+    public Board board;
+    public double weight;
+    public byte nodeType;
+
+    public boolean isValidInTree = true;
+
+    Hashtable<String, PlayTreeNode> children;
+    PlayTreeNode parent;
+
+    public PlayTreeNode(Board b, PlayTreeNode p, byte t, double w){
+        board = b;
+        parent = p;
+        nodeType = t;
+        weight = 0;
+        children = new Hashtable<String, PlayTreeNode>();
+    }
+
+    public void invalidate(){
+        for(PlayTreeNode n : children.values()) n.invalidate();
+        isValidInTree = false;
+    }
+
+    public double recalculateWeight(){
+        if(children.size() == 0) return weight;
+
+        double res = nodeType == MAX_NODE ? 0 : Double.MAX_VALUE;
+        for(PlayTreeNode p : children.values()){
+            res = nodeType == MAX_NODE ? Math.max(res, p.weight) : Math.min(res, p.weight);
+        }
+
+        weight = res;
+        return weight;
+    }
+
+    public void cascadeWeightUp(){
+        recalculateWeight();
+        if(parent != null) parent.cascadeWeightUp();
+    }
+}
+
+class TreeUpdater extends Thread{
+    Main dataProvider;
+    boolean keepRunning = true;
+    byte playerColor;
+
+    public TreeUpdater(Main dp, byte pc){
+        dataProvider = dp;
+        playerColor = pc;
+    }
+
+    public void run(){
+        while(keepRunning){
+            PlayTreeNode toExpand = dataProvider.getNodeToExpand();
+
+            byte currentPlayerColor = toExpand.nodeType == PlayTreeNode.MAX_NODE ? playerColor : (byte)(playerColor ^ 3);
+            ArrayList<Position> moves = toExpand.board.possibleMoves(currentPlayerColor);
+
+            for(Position p : moves){
+                Board newBoard = new Board(toExpand.board);
+                newBoard.moveOn(p, currentPlayerColor);
+                PlayTreeNode newNode = new PlayTreeNode(newBoard, toExpand, (byte)(toExpand.nodeType ^ 12), newBoard.getValueFor(playerColor));
+                toExpand.children.put(p.toString(), newNode);
+                dataProvider.addNodeToExpand(newNode);
+            }
+            toExpand.cascadeWeightUp();
+        }
+    }
+
+    public void pleaseStop(){
+        keepRunning = false;
+    }
+}
+
 class Position {
     public int x;
     public int y;
@@ -281,6 +463,11 @@ class Position {
     public Position(Position p) {
         x = p.x;
         y = p.y;
+    }
+
+    public Position(String move){
+        x = move.charAt(0) - 'a';
+        y = Integer.parseInt(move.substring(1)) - 1;
     }
 
     public String toString() {
