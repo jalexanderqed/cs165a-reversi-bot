@@ -119,7 +119,6 @@ public class Main {
             if(currentColor != myPlayerColor) guessNextMove();
 
             while (true) {
-                if (currentColor == myPlayerColor) lastStart = System.currentTimeMillis();
 
                 if (!board.canMove(currentColor)) {
                     System.out.println((currentColor == Board.LIGHT ? "Light" : "Dark") + " cannot move, turn skipped.");
@@ -135,7 +134,11 @@ public class Main {
                     }
                     continue;
                 }
+
+                if (currentColor != myPlayerColor) timeUsed += (System.currentTimeMillis() - lastStart);
                 Position chosenMove = currentColor == myPlayerColor ? chooseMove(currentColor) : getPlayerMove(currentColor);
+                if (currentColor != myPlayerColor) lastStart = System.currentTimeMillis();
+
 
                 board.moveOn(chosenMove, currentColor);
 
@@ -160,8 +163,6 @@ public class Main {
 
                 currentColor ^= 3;
                 playAll();
-
-                if (currentColor == myPlayerColor) timeUsed += (System.currentTimeMillis() - lastStart);
             }
 
             Score finalScore = board.getScore();
@@ -197,7 +198,7 @@ public class Main {
         long remainingTime = LEGAL_TIME - timeUsed;
         Score s = board.getScore();
         int remainingSpaces = board.WIDTH * board.WIDTH - (s.dark + s.light);
-        double nowWeight = 1.0 + ((26 - board.WIDTH) / 18.0) * 0.5;
+        double nowWeight = 0.5 + ((26 - board.WIDTH) / 18.0) * 1.0;
         System.out.println("nowWeight: " + nowWeight);
         double allowedTime = ((nowWeight / remainingSpaces) * remainingTime) - 1;
         System.out.println("Time used: " + timeUsed);
