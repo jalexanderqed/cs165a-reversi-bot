@@ -1,2 +1,2 @@
 #!/bin/bash
-java -jar reversi.jar -d 3 $@
+java -jar reversi.jar -d 2 $@

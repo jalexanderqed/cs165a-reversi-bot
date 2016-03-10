@@ -70,14 +70,6 @@ public class Main {
         return depth;
     }
 
-    private int getSizeFromNode(PlayTreeNode node){
-        int size = 1;
-        for(PlayTreeNode n : node.children.values()){
-                size += getSizeFromNode(n);
-        }
-        return size;
-    }
-
     public void play(String[] args) {
         try {
             lastStart = System.currentTimeMillis();
@@ -225,7 +217,6 @@ public class Main {
         pauseAll();
 
         System.out.println("Tree depth: " + getTreeDepth());
-        System.out.println("Tree size: " + getSizeFromNode(rootNode));
         System.out.println("Size of queue: " + treeQueue.size());
 
         if (rootNode.children.size() == 0) {
@@ -493,6 +484,12 @@ class Board {
 
     public double getWeightFor(byte color) {
         Score s = getScore();
+        int totalMoves = s.light + s.dark;
+
+        if((double)totalMoves / (WIDTH * WIDTH) < 0.4) {
+            s.light *= 2;
+            s.dark *= 2;
+        }
 
         if(!canMove(DARK) || !canMove(LIGHT)){
             if(s.dark != s.light) {
@@ -506,112 +503,62 @@ class Board {
             else if (spaces[p.pos.x][p.pos.y] == DARK) s.dark += p.weight;
         }
 
-        double offCornerWeight = -5 * WIDTH / 8.0;
-        /*
-        if(spaces[1][0] != EMPTY && spaces[0][0] != spaces[1][0]){
-            if (spaces[1][0] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[1][0] == DARK) s.dark += offCornerWeight;
-        }
-        if(spaces[1][1] != EMPTY && spaces[0][0] != spaces[1][1]){
-            if (spaces[1][1] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[1][1] == DARK) s.dark += offCornerWeight;
-        }
-        if(spaces[0][1] != EMPTY && spaces[0][0] != spaces[0][1]){
-            if (spaces[0][1] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[0][1] == DARK) s.dark += offCornerWeight;
-        }
-
-        if(spaces[0][WIDTH - 2] != EMPTY && spaces[0][WIDTH - 1] != spaces[0][WIDTH - 2]){
-            if (spaces[0][WIDTH - 2] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[0][WIDTH - 2] == DARK) s.dark += offCornerWeight;
-        }
-        if(spaces[1][WIDTH - 2] != EMPTY && spaces[0][WIDTH - 1] != spaces[1][WIDTH - 2]){
-            if (spaces[1][WIDTH - 2] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[1][WIDTH - 2] == DARK) s.dark += offCornerWeight;
-        }
-        if(spaces[1][WIDTH - 1] != EMPTY && spaces[0][WIDTH - 1] != spaces[1][WIDTH - 1]){
-            if (spaces[1][WIDTH - 1] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[1][WIDTH - 1] == DARK) s.dark += offCornerWeight;
-        }
-
-        if(spaces[WIDTH - 2][0] != EMPTY && spaces[WIDTH - 1][0] != spaces[WIDTH - 2][0]){
-            if (spaces[WIDTH - 2][0] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[WIDTH - 2][0] == DARK) s.dark += offCornerWeight;
-        }
-        if(spaces[WIDTH - 2][1] != EMPTY && spaces[WIDTH - 1][0] != spaces[WIDTH - 2][1]){
-            if (spaces[WIDTH - 2][1] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[WIDTH - 2][1] == DARK) s.dark += offCornerWeight;
-        }
-        if(spaces[WIDTH - 1][1] != EMPTY && spaces[WIDTH - 1][0] != spaces[WIDTH - 1][1]){
-            if (spaces[WIDTH - 1][1] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[WIDTH - 1][1] == DARK) s.dark += offCornerWeight;
-        }
-
-        if(spaces[WIDTH - 2][WIDTH - 1] != EMPTY && spaces[WIDTH - 1][WIDTH - 1] != spaces[WIDTH - 2][WIDTH - 1]){
-            if (spaces[WIDTH - 2][WIDTH - 1] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[WIDTH - 2][WIDTH - 1] == DARK) s.dark += offCornerWeight;
-        }
-        if(spaces[WIDTH - 2][WIDTH - 2] != EMPTY && spaces[WIDTH - 1][WIDTH - 1] != spaces[WIDTH - 2][WIDTH - 2]){
-            if (spaces[WIDTH - 2][WIDTH - 2] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[WIDTH - 2][WIDTH - 2] == DARK) s.dark += offCornerWeight;
-        }
-        if(spaces[WIDTH - 1][WIDTH - 2] != EMPTY && spaces[WIDTH - 1][WIDTH - 1] != spaces[WIDTH - 1][WIDTH - 2]){
-            if (spaces[WIDTH - 1][WIDTH - 2] == LIGHT) s.light += offCornerWeight;
-            else if (spaces[WIDTH - 1][WIDTH - 2] == DARK) s.dark += offCornerWeight;
-        }
-        */
-
-        int northSide = 0;
-        int southSide = 0;
-        int westSide = 0;
-        int eastSide = 0;
-        int northSideO = 0;
-        int southSideO = 0;
-        int westSideO = 0;
-        int eastSideO = 0;
-        byte otherColor = (byte)(color ^ 2);
-        for(int i = 0; i < WIDTH; i++){
-            if(spaces[i][0] == LIGHT) westSide++;
-            if(spaces[i][0] == DARK) westSideO++;
-            if(spaces[0][i] == LIGHT) northSide++;
-            if(spaces[0][i] == DARK) northSideO++;
-
-            if(spaces[WIDTH - 1][0] == LIGHT) eastSide++;
-            if(spaces[WIDTH - 1][0] == DARK) eastSideO++;
-            if(spaces[0][WIDTH - 1] == LIGHT) southSide++;
-            if(spaces[0][WIDTH - 1] == DARK) southSideO++;
-        }
-
-        double sideOwnWeight = -3 * offCornerWeight;
-
-        if(westSide >= WIDTH - 1) s.light += sideOwnWeight;
-        else if(westSideO == 0) s.light += sideOwnWeight;
-        if(westSideO >= WIDTH - 1) s.dark += sideOwnWeight;
-        else if(westSide == 0) s.dark += sideOwnWeight;
-
-        if(eastSide >= WIDTH - 1) s.light += sideOwnWeight;
-        else if(eastSideO == 0) s.light += sideOwnWeight;
-        if(eastSideO >= WIDTH - 1) s.dark += sideOwnWeight;
-        else if(eastSide == 0) s.dark += sideOwnWeight;
-
-        if(northSide >= WIDTH - 1) s.light += sideOwnWeight;
-        else if(northSideO == 0) s.light += sideOwnWeight;
-        if(northSideO >= WIDTH - 1) s.dark += sideOwnWeight;
-        else if(northSide == 0) s.dark += sideOwnWeight;
-
-        if(southSide >= WIDTH - 1) s.light += sideOwnWeight;
-        else if(southSideO == 0) s.light += sideOwnWeight;
-        if(southSideO >= WIDTH - 1) s.dark += sideOwnWeight;
-        else if(southSide == 0) s.dark += sideOwnWeight;
-
         s.light += possibleMoves(LIGHT).size() * 2;
         s.dark += possibleMoves(DARK).size() * 2;
 
-        if(!canMove(DARK)) s.light += 20;
+        if(!canMove(DARK)) s.light += totalMoves / 4;
+        if(!canMove(LIGHT)) s.light += totalMoves / 4;
 
-        if(!canMove(LIGHT)) s.light += 20;
+        /*
+        if((double)totalMoves / (WIDTH * WIDTH) >= 0.4) {
+            int northSide = 0;
+            int southSide = 0;
+            int westSide = 0;
+            int eastSide = 0;
+            int northSideO = 0;
+            int southSideO = 0;
+            int westSideO = 0;
+            int eastSideO = 0;
 
-        return color == Board.DARK ? s.dark - s.light : s.light - s.dark;
+            for (int i = 0; i < WIDTH; i++) {
+                if (spaces[i][0] == LIGHT) westSide++;
+                if (spaces[i][0] == DARK) westSideO++;
+                if (spaces[0][i] == LIGHT) northSide++;
+                if (spaces[0][i] == DARK) northSideO++;
+
+                if (spaces[WIDTH - 1][0] == LIGHT) eastSide++;
+                if (spaces[WIDTH - 1][0] == DARK) eastSideO++;
+                if (spaces[0][WIDTH - 1] == LIGHT) southSide++;
+                if (spaces[0][WIDTH - 1] == DARK) southSideO++;
+            }
+
+            double sideOwnWeight = 15 * (WIDTH / 8.0);
+
+            if (westSide >= WIDTH - 1) s.light += sideOwnWeight;
+            else if (westSideO == 0) s.light += sideOwnWeight;
+            if (westSideO >= WIDTH - 1) s.dark += sideOwnWeight;
+            else if (westSide == 0) s.dark += sideOwnWeight;
+
+            if (eastSide >= WIDTH - 1) s.light += sideOwnWeight;
+            else if (eastSideO == 0) s.light += sideOwnWeight;
+            if (eastSideO >= WIDTH - 1) s.dark += sideOwnWeight;
+            else if (eastSide == 0) s.dark += sideOwnWeight;
+
+            if (northSide >= WIDTH - 1) s.light += sideOwnWeight;
+            else if (northSideO == 0) s.light += sideOwnWeight;
+            if (northSideO >= WIDTH - 1) s.dark += sideOwnWeight;
+            else if (northSide == 0) s.dark += sideOwnWeight;
+
+            if (southSide >= WIDTH - 1) s.light += sideOwnWeight;
+            else if (southSideO == 0) s.light += sideOwnWeight;
+            if (southSideO >= WIDTH - 1) s.dark += sideOwnWeight;
+            else if (southSide == 0) s.dark += sideOwnWeight;
+        }
+        */
+
+        double result = color == Board.DARK ? s.dark - s.light : s.light - s.dark;
+
+        return result;
     }
 
     public String toString() {
@@ -683,7 +630,7 @@ class PlayTreeNode {
     public double recalculateWeight() {
         if (children.size() == 0) return weight;
 
-        double res = nodeType == MAX_NODE ? 0 : Double.MAX_VALUE;
+        double res = nodeType == MAX_NODE ? Double.MIN_VALUE : Double.MAX_VALUE;
         for (PlayTreeNode p : children.values()) {
             res = (nodeType == MAX_NODE ? Math.max(res, p.weight) : Math.min(res, p.weight));
         }
