@@ -493,6 +493,13 @@ class Board {
     public double getWeightFor(byte color) {
         Score s = getScore();
 
+        if(!canMove(DARK) || !canMove(LIGHT)){
+            if(s.dark != s.light) {
+                byte winner = s.dark > s.light ? DARK : LIGHT;
+                return color == winner ? 1e4 : -1e4;
+            }
+        }
+
         for (PositionWeightPair p : Main.weights) {
             if (spaces[p.pos.x][p.pos.y] == LIGHT) s.light += p.weight;
             else if (spaces[p.pos.x][p.pos.y] == DARK) s.dark += p.weight;
@@ -596,8 +603,12 @@ class Board {
         if(southSideO >= WIDTH - 1) s.dark += sideOwnWeight;
         else if(southSide == 0) s.dark += sideOwnWeight;
 
-        s.light += possibleMoves(LIGHT).size();
-        s.dark += possibleMoves(DARK).size();
+        s.light += possibleMoves(LIGHT).size() * 2;
+        s.dark += possibleMoves(DARK).size() * 2;
+
+        if(!canMove(DARK)) s.light += 20;
+
+        if(!canMove(LIGHT)) s.light += 20;
 
         return color == Board.DARK ? s.dark - s.light : s.light - s.dark;
     }
@@ -676,6 +687,7 @@ class PlayTreeNode {
             res = (nodeType == MAX_NODE ? Math.max(res, p.weight) : Math.min(res, p.weight));
         }
 
+        if(res == 0) return weight;
         weight = res;
         return weight;
     }
