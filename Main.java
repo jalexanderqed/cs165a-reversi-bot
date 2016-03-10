@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Main {
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
 
     private Board board;
     private BufferedReader stdIn = new BufferedReader(new InputStreamReader(System.in));
@@ -21,11 +21,33 @@ public class Main {
     private ConcurrentLinkedQueue<PlayTreeNode> treeQueue = new ConcurrentLinkedQueue<PlayTreeNode>();
 
     private boolean running = true;
+    TreeUpdater[] updaters = new TreeUpdater[5];
+
+    public static ArrayList<PositionWeightPair> weights = new ArrayList<PositionWeightPair>();
+
+    private void initWeights(int width){
+        for (int x = 0; x < width; x += width - 1) {
+            for (int y = 0; y < width; y += width - 1) {
+                weights.add(new PositionWeightPair(new Position(x, y), 20 * width / 8.0));
+            }
+        }
+
+        for (int i = 0; i < width; i += width - 1) {
+            if(i == 1 || i == width - 2){
+                // Do nothing; these are dealt with later
+            }
+            else {
+                weights.add(new PositionWeightPair(new Position(i, 0), 3));
+                weights.add(new PositionWeightPair(new Position(i, width - 1), 3));
+                weights.add(new PositionWeightPair(new Position(0, i), 3));
+                weights.add(new PositionWeightPair(new Position(0, i), 3));
+            }
+        }
+    }
 
     public synchronized PlayTreeNode getNodeToExpand() {
         PlayTreeNode n;
-        if (rootNode.children.size() == 0) n = rootNode;
-        else n = treeQueue.poll();
+        n = treeQueue.poll();
         return n;
     }
 
@@ -57,7 +79,6 @@ public class Main {
     }
 
     public void play(String[] args) {
-        TreeUpdater[] updaters = new TreeUpdater[1];
         try {
             lastStart = System.currentTimeMillis();
             timeUsed = 0;
@@ -76,6 +97,7 @@ public class Main {
             byte currentColor = Board.DARK;
 
             board = new Board(boardSize);
+            initWeights(boardSize);
             rootNode = new PlayTreeNode(board, null, myPlayerColor == currentColor ? PlayTreeNode.MAX_NODE : PlayTreeNode.MIN_NODE, 0);
 
             for(int i = 0; i < updaters.length; i++) {
@@ -125,12 +147,7 @@ public class Main {
                 if(currentColor == myPlayerColor){
                     PlayTreeNode nextNode = rootNode.children.get(chosenMove.toString());
                     if(nextNode == null){
-                        System.out.println("Root's children: " + rootNode.children.size());
-                        for(String key : rootNode.children.keySet()){
-                            System.out.println(key);
-                        }
-                        System.out.println("Chosen move: " + chosenMove);
-                        throw new IllegalStateException("Root node had not been expanded.");
+                        nextNode = new PlayTreeNode(board, null, PlayTreeNode.MIN_NODE, 0);
                     }
                     rootNode = nextNode;
 
@@ -142,6 +159,7 @@ public class Main {
                 }
 
                 currentColor ^= 3;
+                playAll();
 
                 if (currentColor == myPlayerColor) timeUsed += (System.currentTimeMillis() - lastStart);
             }
@@ -179,15 +197,31 @@ public class Main {
         long remainingTime = LEGAL_TIME - timeUsed;
         Score s = board.getScore();
         int remainingSpaces = board.WIDTH * board.WIDTH - (s.dark + s.light);
-        double allowedTime = ((1.8 / remainingSpaces) * remainingTime) - 1;
+        double nowWeight = 1.0 + ((26 - board.WIDTH) / 18.0) * 0.5;
+        System.out.println("nowWeight: " + nowWeight);
+        double allowedTime = ((nowWeight / remainingSpaces) * remainingTime) - 1;
         System.out.println("Time used: " + timeUsed);
         System.out.println("Time allowed: " + LEGAL_TIME);
         System.out.println("Remaining spaces: " + remainingSpaces);
         System.out.println("Remaining time: " + remainingTime);
         System.out.println("Allowed time: " + allowedTime);
-        try{
-            Thread.sleep((long)allowedTime);
-        }catch(Exception e){}
+        long startTime = System.currentTimeMillis();
+        if(allowedTime < 10){
+            try {
+                Thread.sleep(Math.max((long)allowedTime - 1, 0));
+            } catch (Exception e) {
+            }
+        }
+        else {
+            while (System.currentTimeMillis() - startTime < (allowedTime - 4) && treeQueue.size() > 0) {
+                try {
+                    Thread.sleep(4);
+                } catch (Exception e) {
+                }
+            }
+        }
+
+        pauseAll();
 
         System.out.println("Tree depth: " + getTreeDepth());
         System.out.println("Tree size: " + getSizeFromNode(rootNode));
@@ -214,10 +248,6 @@ public class Main {
 
     private synchronized void guessNextMove(){
         treeQueue.clear();
-        try {
-            Thread.sleep(2);
-        } catch (Exception e) {
-        }
 
         if(rootNode.nodeType != PlayTreeNode.MIN_NODE) throw new IllegalStateException("Root node is not min node in guessNextMove.");
 
@@ -254,10 +284,6 @@ public class Main {
         if(rootNode.board.equals(board)) return true;
         else{
             treeQueue.clear();
-            try {
-                Thread.sleep(2);
-            } catch (Exception e) {
-            }
             rootNode = new PlayTreeNode(board, null, PlayTreeNode.MAX_NODE, 0);
             rootNode.parent = null;
             addNodeToExpand(rootNode);
@@ -301,6 +327,18 @@ public class Main {
         ArrayList<Position> moves = board.possibleMoves(currentColor);
         Position chosenMove = moves.get((int) (moves.size() * Math.random()));
          return chosenMove;
+    }
+
+    private void pauseAll(){
+        for(TreeUpdater thr : updaters){
+            thr.pleasePause();
+        }
+    }
+
+    private void playAll(){
+        for(TreeUpdater thr : updaters){
+            thr.pleasePlay();
+        }
     }
 }
 
@@ -454,19 +492,113 @@ class Board {
 
     public double getWeightFor(byte color) {
         Score s = getScore();
-        for (int x = 0; x < WIDTH; x += WIDTH - 1) {
-            for (int y = 0; y < WIDTH; y += WIDTH - 1) {
-                if (spaces[x][y] == LIGHT) s.light += 4;
-                else if (spaces[x][y] == DARK) s.dark += 4;
-            }
+
+        for (PositionWeightPair p : Main.weights) {
+            if (spaces[p.pos.x][p.pos.y] == LIGHT) s.light += p.weight;
+            else if (spaces[p.pos.x][p.pos.y] == DARK) s.dark += p.weight;
         }
 
+        double offCornerWeight = -5 * WIDTH / 8.0;
         /*
-        double scorePart = (color == DARK ? (double) (s.dark + 1) / (s.light + 1) : (double) (s.light + 1) / (s.dark + 1));
-        int playerMoves = possibleMoves(color).size();
-        int otherPlayerMoves = possibleMoves((byte) (color ^ 3)).size();
-        double movesPart = (double) (playerMoves + 5) / (otherPlayerMoves + 5);
+        if(spaces[1][0] != EMPTY && spaces[0][0] != spaces[1][0]){
+            if (spaces[1][0] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[1][0] == DARK) s.dark += offCornerWeight;
+        }
+        if(spaces[1][1] != EMPTY && spaces[0][0] != spaces[1][1]){
+            if (spaces[1][1] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[1][1] == DARK) s.dark += offCornerWeight;
+        }
+        if(spaces[0][1] != EMPTY && spaces[0][0] != spaces[0][1]){
+            if (spaces[0][1] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[0][1] == DARK) s.dark += offCornerWeight;
+        }
+
+        if(spaces[0][WIDTH - 2] != EMPTY && spaces[0][WIDTH - 1] != spaces[0][WIDTH - 2]){
+            if (spaces[0][WIDTH - 2] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[0][WIDTH - 2] == DARK) s.dark += offCornerWeight;
+        }
+        if(spaces[1][WIDTH - 2] != EMPTY && spaces[0][WIDTH - 1] != spaces[1][WIDTH - 2]){
+            if (spaces[1][WIDTH - 2] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[1][WIDTH - 2] == DARK) s.dark += offCornerWeight;
+        }
+        if(spaces[1][WIDTH - 1] != EMPTY && spaces[0][WIDTH - 1] != spaces[1][WIDTH - 1]){
+            if (spaces[1][WIDTH - 1] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[1][WIDTH - 1] == DARK) s.dark += offCornerWeight;
+        }
+
+        if(spaces[WIDTH - 2][0] != EMPTY && spaces[WIDTH - 1][0] != spaces[WIDTH - 2][0]){
+            if (spaces[WIDTH - 2][0] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[WIDTH - 2][0] == DARK) s.dark += offCornerWeight;
+        }
+        if(spaces[WIDTH - 2][1] != EMPTY && spaces[WIDTH - 1][0] != spaces[WIDTH - 2][1]){
+            if (spaces[WIDTH - 2][1] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[WIDTH - 2][1] == DARK) s.dark += offCornerWeight;
+        }
+        if(spaces[WIDTH - 1][1] != EMPTY && spaces[WIDTH - 1][0] != spaces[WIDTH - 1][1]){
+            if (spaces[WIDTH - 1][1] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[WIDTH - 1][1] == DARK) s.dark += offCornerWeight;
+        }
+
+        if(spaces[WIDTH - 2][WIDTH - 1] != EMPTY && spaces[WIDTH - 1][WIDTH - 1] != spaces[WIDTH - 2][WIDTH - 1]){
+            if (spaces[WIDTH - 2][WIDTH - 1] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[WIDTH - 2][WIDTH - 1] == DARK) s.dark += offCornerWeight;
+        }
+        if(spaces[WIDTH - 2][WIDTH - 2] != EMPTY && spaces[WIDTH - 1][WIDTH - 1] != spaces[WIDTH - 2][WIDTH - 2]){
+            if (spaces[WIDTH - 2][WIDTH - 2] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[WIDTH - 2][WIDTH - 2] == DARK) s.dark += offCornerWeight;
+        }
+        if(spaces[WIDTH - 1][WIDTH - 2] != EMPTY && spaces[WIDTH - 1][WIDTH - 1] != spaces[WIDTH - 1][WIDTH - 2]){
+            if (spaces[WIDTH - 1][WIDTH - 2] == LIGHT) s.light += offCornerWeight;
+            else if (spaces[WIDTH - 1][WIDTH - 2] == DARK) s.dark += offCornerWeight;
+        }
         */
+
+        int northSide = 0;
+        int southSide = 0;
+        int westSide = 0;
+        int eastSide = 0;
+        int northSideO = 0;
+        int southSideO = 0;
+        int westSideO = 0;
+        int eastSideO = 0;
+        byte otherColor = (byte)(color ^ 2);
+        for(int i = 0; i < WIDTH; i++){
+            if(spaces[i][0] == LIGHT) westSide++;
+            if(spaces[i][0] == DARK) westSideO++;
+            if(spaces[0][i] == LIGHT) northSide++;
+            if(spaces[0][i] == DARK) northSideO++;
+
+            if(spaces[WIDTH - 1][0] == LIGHT) eastSide++;
+            if(spaces[WIDTH - 1][0] == DARK) eastSideO++;
+            if(spaces[0][WIDTH - 1] == LIGHT) southSide++;
+            if(spaces[0][WIDTH - 1] == DARK) southSideO++;
+        }
+
+        double sideOwnWeight = -3 * offCornerWeight;
+
+        if(westSide >= WIDTH - 1) s.light += sideOwnWeight;
+        else if(westSideO == 0) s.light += sideOwnWeight;
+        if(westSideO >= WIDTH - 1) s.dark += sideOwnWeight;
+        else if(westSide == 0) s.dark += sideOwnWeight;
+
+        if(eastSide >= WIDTH - 1) s.light += sideOwnWeight;
+        else if(eastSideO == 0) s.light += sideOwnWeight;
+        if(eastSideO >= WIDTH - 1) s.dark += sideOwnWeight;
+        else if(eastSide == 0) s.dark += sideOwnWeight;
+
+        if(northSide >= WIDTH - 1) s.light += sideOwnWeight;
+        else if(northSideO == 0) s.light += sideOwnWeight;
+        if(northSideO >= WIDTH - 1) s.dark += sideOwnWeight;
+        else if(northSide == 0) s.dark += sideOwnWeight;
+
+        if(southSide >= WIDTH - 1) s.light += sideOwnWeight;
+        else if(southSideO == 0) s.light += sideOwnWeight;
+        if(southSideO >= WIDTH - 1) s.dark += sideOwnWeight;
+        else if(southSide == 0) s.dark += sideOwnWeight;
+
+        s.light += possibleMoves(LIGHT).size();
+        s.dark += possibleMoves(DARK).size();
+
         return color == Board.DARK ? s.dark - s.light : s.light - s.dark;
     }
 
@@ -561,13 +693,24 @@ class TreeUpdater extends Thread {
     boolean keepRunning = true;
     byte playerColor;
 
+    static long startTime;
+    boolean paused = false;
+    long myLastPause = 0;
+
     public TreeUpdater(Main dp, byte pc) {
+        if(startTime == 0) startTime = System.currentTimeMillis();
         dataProvider = dp;
         playerColor = pc;
     }
 
     public void run() {
         while (keepRunning) {
+            while(paused){
+                try{
+                    Thread.sleep(1);
+                }catch(Exception e){}
+            }
+
             PlayTreeNode toExpand = dataProvider.getNodeToExpand();
             if(toExpand == null) continue;
             PlayTreeNode grandParent = toExpand;
@@ -597,11 +740,26 @@ class TreeUpdater extends Thread {
                 dataProvider.addNodeToExpand(newNode);
             }
             toExpand.cascadeWeightUp();
+
+            if((System.currentTimeMillis() - startTime) % 20 > myLastPause){
+                myLastPause = (System.currentTimeMillis() - startTime) % 20;
+                try{
+                    Thread.sleep(1);
+                }catch(Exception e){}
+            }
         }
     }
 
     public void pleaseStop() {
         keepRunning = false;
+    }
+
+    public void pleasePause(){
+        paused = true;
+    }
+
+    public void pleasePlay(){
+        paused = false;
     }
 }
 
@@ -645,5 +803,15 @@ class Score {
 
     public String toString() {
         return "Light " + light + " - Dark " + dark;
+    }
+}
+
+class PositionWeightPair{
+    public Position pos;
+    public double weight;
+
+    public PositionWeightPair(Position p, double w){
+        pos = p;
+        weight = w;
     }
 }
