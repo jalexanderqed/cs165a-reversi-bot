@@ -1,4 +1,4 @@
 #!/bin/bash
-if javac Main.java; then
-    time java Main $@
+if javac Reversi.java; then
+    java Reversi $@
 fi
