@@ -1,0 +1,4 @@
+#!/bin/bash
+if javac Reversi.java; then
+    java Reversi $@
+fi
